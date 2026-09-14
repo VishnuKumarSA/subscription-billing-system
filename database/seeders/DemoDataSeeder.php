@@ -55,6 +55,16 @@ class DemoDataSeeder extends Seeder
 
     public function run(): void
     {
+        // Deterministic: simulateRange() below uses mt_rand() for daily
+        // usage variance. Without a fixed seed, exact invoice totals and
+        // overage figures shift on every `migrate:fresh --seed`, which
+        // breaks anything (docs, a Postman collection, a screen recording
+        // script) that references specific numbers. The demo's *dates* are
+        // still relative to "today", so a reseed on a different calendar
+        // day can still shift totals slightly - only same-day reseeds are
+        // guaranteed byte-for-byte identical.
+        mt_srand(42);
+
         $now = CarbonImmutable::now();
         $thisMonthStart = $now->startOfMonth();
         $lastMonthStart = $thisMonthStart->subMonthNoOverflow();

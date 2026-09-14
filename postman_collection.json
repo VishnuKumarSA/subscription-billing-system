@@ -1,0 +1,366 @@
+{
+  "info": {
+    "name": "Subscription Billing & Usage-Metering API",
+    "description": "Step-by-step test flow for the Mallow Technologies take-home. Run the folders in order (0 -> 6). See TESTING_GUIDE.md in the repo root for what to expect at each step.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "acme_key", "value": "sk_SJxy87gUlGgriyh4MsyvfiqltEqpkUex5eDPA5hJ" },
+    { "key": "globex_key", "value": "sk_B4wIowsUjwGJsHsB1oipmVnNgSx5E2LcxYen8BZa" },
+    { "key": "acme_merchant_id", "value": "1" },
+    { "key": "globex_merchant_id", "value": "2" },
+    { "key": "acme_plan_starter_id", "value": "1" },
+    { "key": "acme_plan_growth_id", "value": "2" },
+    { "key": "acme_plan_pro_id", "value": "3" },
+    { "key": "globex_plan_standard_id", "value": "4" },
+    { "key": "acme_customer_beta_id", "value": "1" },
+    { "key": "acme_customer_orbit_id", "value": "6" },
+    { "key": "acme_customer_helix_id", "value": "7" },
+    { "key": "acme_subscription_beta_id", "value": "1" },
+    { "key": "acme_subscription_orbit_id", "value": "6" },
+    { "key": "acme_subscription_helix_id", "value": "7" },
+    { "key": "acme_invoice_orbit_id", "value": "6" },
+    { "key": "globex_customer_initech_id", "value": "8" },
+    { "key": "test_customer_id", "value": "" },
+    { "key": "test_subscription_id", "value": "" },
+    { "key": "shared_idempotency_key", "value": "postman-demo-key-001" }
+  ],
+  "item": [
+    {
+      "name": "0 - Health & Auth Checks",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/up", "host": ["{{base_url}}"], "path": ["up"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "No API key -> 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/plans", "host": ["{{base_url}}"], "path": ["api", "plans"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"] } }]
+        },
+        {
+          "name": "Invalid API key -> 401",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "sk_not_a_real_key" }],
+            "url": { "raw": "{{base_url}}/api/plans", "host": ["{{base_url}}"], "path": ["api", "plans"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "1 - Plans",
+      "item": [
+        {
+          "name": "List Acme's plans",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/plans", "host": ["{{base_url}}"], "path": ["api", "plans"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Returns 3 plans (Starter, Growth, Pro)', () => pm.expect(pm.response.json().data.length).to.eql(3));"
+          ] } }]
+        },
+        {
+          "name": "Show Growth plan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/plans/{{acme_plan_growth_id}}", "host": ["{{base_url}}"], "path": ["api", "plans", "{{acme_plan_growth_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Create a new plan",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Enterprise\",\n  \"base_price_cents\": 1200000,\n  \"included_units\": 1000000,\n  \"overage_rate_micros\": 30000,\n  \"currency\": \"INR\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/plans", "host": ["{{base_url}}"], "path": ["api", "plans"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] } }]
+        },
+        {
+          "name": "Update Growth plan pricing (then check cache invalidation)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"base_price_cents\": 310000\n}" },
+            "url": { "raw": "{{base_url}}/api/plans/{{acme_plan_growth_id}}", "host": ["{{base_url}}"], "path": ["api", "plans", "{{acme_plan_growth_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Price updated', () => pm.expect(pm.response.json().data.base_price_cents).to.eql(310000));"
+          ] } }]
+        },
+        {
+          "name": "Cross-tenant: Globex key views Acme's plan -> 403",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{globex_key}}" }],
+            "url": { "raw": "{{base_url}}/api/plans/{{acme_plan_growth_id}}", "host": ["{{base_url}}"], "path": ["api", "plans", "{{acme_plan_growth_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "2 - Customers",
+      "item": [
+        {
+          "name": "List Acme's customers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/customers", "host": ["{{base_url}}"], "path": ["api", "customers"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Create a test customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Co.\",\n  \"email\": \"postman-test@example.com\"\n}" },
+            "url": { "raw": "{{base_url}}/api/customers", "host": ["{{base_url}}"], "path": ["api", "customers"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('test_customer_id', pm.response.json().data.id);",
+            "pm.test('test_customer_id captured', () => pm.expect(pm.collectionVariables.get('test_customer_id')).to.not.be.empty);"
+          ] } }]
+        },
+        {
+          "name": "Show Beta Retail (seeded, top usage customer)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/customers/{{acme_customer_beta_id}}", "host": ["{{base_url}}"], "path": ["api", "customers", "{{acme_customer_beta_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Cross-tenant: Acme key views Globex's customer -> 403",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/customers/{{globex_customer_initech_id}}", "host": ["{{base_url}}"], "path": ["api", "customers", "{{globex_customer_initech_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "3 - Subscriptions & Plan Changes",
+      "item": [
+        {
+          "name": "Show Helix Systems' subscription (mid-cycle plan change demo)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/{{acme_subscription_helix_id}}", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "{{acme_subscription_helix_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Has 2 segments (Starter then Growth)', () => pm.expect(pm.response.json().data.segments.length).to.be.at.least(2));"
+          ] } }]
+        },
+        {
+          "name": "Create a subscription for the test customer (Starter plan)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": {{test_customer_id}},\n  \"plan_id\": {{acme_plan_starter_id}}\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions", "host": ["{{base_url}}"], "path": ["api", "subscriptions"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('test_subscription_id', pm.response.json().data.id);"
+          ] } }]
+        },
+        {
+          "name": "Duplicate active subscription for the same customer -> 422",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": {{test_customer_id}},\n  \"plan_id\": {{acme_plan_starter_id}}\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions", "host": ["{{base_url}}"], "path": ["api", "subscriptions"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 422', () => pm.response.to.have.status(422));"] } }]
+        },
+        {
+          "name": "Upgrade the test subscription to Growth",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"new_plan_id\": {{acme_plan_growth_id}}\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions/{{test_subscription_id}}/change-plan", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "{{test_subscription_id}}", "change-plan"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Current plan is now Growth', () => pm.expect(pm.response.json().data.current_plan.name).to.eql('Growth'));",
+            "pm.test('Has 2 segments now', () => pm.expect(pm.response.json().data.segments.length).to.eql(2));"
+          ] } }]
+        },
+        {
+          "name": "Cross-tenant: Globex key changes Acme's subscription plan -> 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{globex_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"new_plan_id\": {{acme_plan_pro_id}}\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions/{{acme_subscription_beta_id}}/change-plan", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "{{acme_subscription_beta_id}}", "change-plan"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "4 - Usage Events",
+      "item": [
+        {
+          "name": "Record usage for the test customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": {{test_customer_id}},\n  \"usage_date\": \"2026-09-14\",\n  \"units\": 25,\n  \"idempotency_key\": \"{{shared_idempotency_key}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/usage", "host": ["{{base_url}}"], "path": ["api", "usage"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('first_usage_event_id', pm.response.json().data.id);"
+          ] } }]
+        },
+        {
+          "name": "Retry the SAME request (same idempotency_key) -> still 201, same event id",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": {{test_customer_id}},\n  \"usage_date\": \"2026-09-14\",\n  \"units\": 25,\n  \"idempotency_key\": \"{{shared_idempotency_key}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/usage", "host": ["{{base_url}}"], "path": ["api", "usage"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('Same event id as the first call (no duplicate row)', () => pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('first_usage_event_id')));"
+          ] } }]
+        },
+        {
+          "name": "Unknown customer_id -> 422",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": 999999,\n  \"usage_date\": \"2026-09-14\",\n  \"units\": 10,\n  \"idempotency_key\": \"bad-customer-test\"\n}" },
+            "url": { "raw": "{{base_url}}/api/usage", "host": ["{{base_url}}"], "path": ["api", "usage"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 422', () => pm.response.to.have.status(422));"] } }]
+        },
+        {
+          "name": "Cross-tenant customer_id (Globex's customer, Acme's key) -> 422",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": {{globex_customer_initech_id}},\n  \"usage_date\": \"2026-09-14\",\n  \"units\": 10,\n  \"idempotency_key\": \"cross-tenant-test\"\n}" },
+            "url": { "raw": "{{base_url}}/api/usage", "host": ["{{base_url}}"], "path": ["api", "usage"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 422', () => pm.response.to.have.status(422));"] } }]
+        },
+        {
+          "name": "Missing units -> 422",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_id\": {{test_customer_id}},\n  \"usage_date\": \"2026-09-14\",\n  \"idempotency_key\": \"missing-units-test\"\n}" },
+            "url": { "raw": "{{base_url}}/api/usage", "host": ["{{base_url}}"], "path": ["api", "usage"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 422', () => pm.response.to.have.status(422));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "5 - Dashboard",
+      "item": [
+        {
+          "name": "Acme dashboard (top 5, projected overage, churn risk)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/merchants/{{acme_merchant_id}}/dashboard", "host": ["{{base_url}}"], "path": ["api", "merchants", "{{acme_merchant_id}}", "dashboard"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Has churn_risk_customers (Nova Traders + QuickMart expected)', () => pm.expect(pm.response.json().churn_risk_customers.length).to.be.at.least(1));"
+          ] } }]
+        },
+        {
+          "name": "Globex dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{globex_key}}" }],
+            "url": { "raw": "{{base_url}}/api/merchants/{{globex_merchant_id}}/dashboard", "host": ["{{base_url}}"], "path": ["api", "merchants", "{{globex_merchant_id}}", "dashboard"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Cross-tenant: Acme key views Globex's dashboard -> 403",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/merchants/{{globex_merchant_id}}/dashboard", "host": ["{{base_url}}"], "path": ["api", "merchants", "{{globex_merchant_id}}", "dashboard"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "6 - Invoices (auditable billing breakdown)",
+      "item": [
+        {
+          "name": "List Orbit Solutions' invoices (overage example)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/{{acme_subscription_orbit_id}}/invoices", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "{{acme_subscription_orbit_id}}", "invoices"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Show Orbit's invoice detail (usage=14935, overage=4935 units)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{acme_key}}" }],
+            "url": { "raw": "{{base_url}}/api/invoices/{{acme_invoice_orbit_id}}", "host": ["{{base_url}}"], "path": ["api", "invoices", "{{acme_invoice_orbit_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Total is 1,493.50 (149350 cents)', () => pm.expect(pm.response.json().data.total_cents).to.eql(149350));",
+            "pm.test('Line item shows overage', () => pm.expect(pm.response.json().data.line_items[0].overage_units).to.be.above(0));"
+          ] } }]
+        },
+        {
+          "name": "Cross-tenant: Globex key views Acme's invoice -> 403",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{globex_key}}" }],
+            "url": { "raw": "{{base_url}}/api/invoices/{{acme_invoice_orbit_id}}", "host": ["{{base_url}}"], "path": ["api", "invoices", "{{acme_invoice_orbit_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"] } }]
+        }
+      ]
+    }
+  ]
+}
