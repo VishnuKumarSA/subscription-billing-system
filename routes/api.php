@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:api')->group(function () {
 
     // High-throughput, idempotent usage ingestion. Rate limited separately
-    // from every other route (120/min per API key) - see config/billing.php
+    // from every other route (10/min per API key) - see config/billing.php
     // and AppServiceProvider::registerRateLimiters().
     Route::post('/usage', [UsageEventController::class, 'store'])->middleware('throttle:usage');
 
